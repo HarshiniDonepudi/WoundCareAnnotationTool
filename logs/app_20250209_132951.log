@@ -1,0 +1,20 @@
+2025-02-09 13:29:52,766 - databricks.sql.client - INFO - Successfully opened session 01efe713-da78-1938-a0c3-6ac8fac8693b
+2025-02-09 13:29:52,919 - __main__ - ERROR - Database initialization failed: 
+[PARSE_SYNTAX_ERROR] Syntax error at or near 'NULL'. SQLSTATE: 42601 (line 9, pos 37)
+
+== SQL ==
+
+            CREATE TABLE IF NOT EXISTS wcr_wound_detection.wcr_wound.user_info (
+                user_id VARCHAR(36) PRIMARY KEY,
+                username VARCHAR(255),
+                password_hash VARCHAR(255),
+                full_name VARCHAR(255),
+                role VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP NULL,
+-------------------------------------^^^
+                is_active TINYINT(1) DEFAULT 1
+            )
+            
+
+2025-02-09 13:29:55,786 - databricks.sql.client - INFO - Closing session 01efe713-da78-1938-a0c3-6ac8fac8693b

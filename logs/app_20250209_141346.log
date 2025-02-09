@@ -1,0 +1,2 @@
+2025-02-09 14:13:47,349 - databricks.sql.client - INFO - Successfully opened session 01efe719-fcc7-10d3-b311-0bd51ec524ec
+2025-02-09 14:13:55,313 - __main__ - ERROR - Application error: 'MainWindow' object has no attribute 'image_list'

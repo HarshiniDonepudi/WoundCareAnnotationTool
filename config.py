@@ -4,7 +4,7 @@ class Config:
     DATABRICKS_HTTP_PATH = "/sql/1.0/warehouses/d914971383124532"
 
     
-    WOUND_ASSESSMENT_TABLE = "wcr_wound_detection.wcr_wound.joined_wound_assessments"
+    WOUND_TABLE = "wcr_wound_detection.wcr_wound.wcr_annotation_initial"
     
     ETIOLOGY_OPTIONS = [
      "INSECT BITE",

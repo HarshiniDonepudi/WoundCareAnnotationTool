@@ -1,0 +1,2 @@
+2025-02-09 14:15:14,691 - databricks.sql.client - INFO - Successfully opened session 01efe71a-30df-15bb-9eb5-bc17eecb104a
+2025-02-09 14:15:26,718 - __main__ - ERROR - Application error: 'DatabricksConnector' object has no attribute 'db'

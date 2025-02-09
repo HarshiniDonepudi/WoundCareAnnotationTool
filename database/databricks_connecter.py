@@ -1,14 +1,18 @@
 from databricks import sql
 from config import Config
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict, Any
+from datetime import datetime
+import json
 
 @dataclass
 class WoundInfo:
     wound_assessment_id: int
     wound_type: str
     body_location: str
-    body_map_id: Optional[str] = None
+    image_data: Optional[bytes] = None
+    path: Optional[str] = None
+    annotations: Optional[Dict[str, Any]] = None
 
 class DatabricksConnector:
     def __init__(self):
@@ -26,49 +30,189 @@ class DatabricksConnector:
         except Exception as e:
             print(f"Error connecting to Databricks: {str(e)}")
             raise
+
+    def get_image_by_path(self, image_path: str) -> Optional[bytes]:
+        """Fetch image data from images table using path"""
+        try:
+            if not self.connection:
+                self.connect()
+
+            query = f"""
+            SELECT content 
+            FROM wcr_wound_detection.wcr_wound.wcr_annotation_initial
+            WHERE path = '{image_path}'
+            """
+            
+            print(f"Executing image query: {query}")
+            cursor = self.connection.cursor()
+            cursor.execute(query)
+            result = cursor.fetchone()
+            cursor.close()
+
+            if result and result[0]:
+                return result[0]  # Return binary image data
+            return None
+
+        except Exception as e:
+            print(f"Error fetching image: {str(e)}")
+            return None
     
     def get_wound_assessment(self, assessment_id: str) -> Optional[WoundInfo]:
-        """
-        Fetch wound assessment information from Databricks
-        assessment_id: The ID extracted from image filename
-        """
+        """Fetch wound assessment and corresponding image"""
         try:
             if not self.connection:
                 self.connect()
                 
-            # Convert assessment_id to integer
             assessment_id_int = int(assessment_id)
             
             query = f"""
             SELECT 
                 WoundAssessmentID,
                 WoundType,
-                WoundLocationLocation
-            FROM wcr_wound_detection.wcr_wound.joined_wound_assessments
+                WoundLocationLocation,
+                path
+            FROM wcr_wound_detection.wcr_wound.wcr_annotation_initial
             WHERE WoundAssessmentID = {assessment_id_int}
             """
             
-            print(f"Executing query: {query}")  # Debug print
-            
+            print(f"Executing wound query: {query}")
             cursor = self.connection.cursor()
             cursor.execute(query)
             result = cursor.fetchone()
             cursor.close()
             
             if result:
+                # Get image using path
+                image_path = result[3]
+                image_data = self.get_image_by_path(image_path)
+                
                 return WoundInfo(
                     wound_assessment_id=result[0],
-                    wound_type=result[1],
-                    body_location=result[2]
+                    wound_type=result[1] if result[1] else "Unknown",
+                    body_location=result[2] if result[2] else "Unknown",
+                    image_data=image_data,
+                    path=image_path,
+                    annotations=None
                 )
-            else:
-                print(f"No wound information found for assessment ID: {assessment_id_int}")
-                return None
+                
+            return None
                 
         except Exception as e:
             print(f"Error fetching wound assessment: {str(e)}")
             return None
-        
+
+    def save_annotations(self, wound_assessment_id: int, annotations: list) -> bool:
+        """Save annotations back to the database"""
+        try:
+            if not self.connection:
+                self.connect()
+
+            annotations_json = json.dumps({
+                'boxes': [{
+                    'x': box['box'].x(),
+                    'y': box['box'].y(),
+                    'width': box['box'].width(),
+                    'height': box['box'].height(),
+                    'category': box['category'],
+                    'location': box['location'],
+                    'body_map_id': box['body_map_id'],
+                    'created_by': box.get('created_by', 'unknown'),
+                    'created_at': box.get('created_at', datetime.now().isoformat())
+                } for box in annotations]
+            })
+
+            query = f"""
+            UPDATE wcr_wound_detection.wcr_wound.wcr_annotation_initial
+            SET 
+                annotations = '{annotations_json}',
+                last_modified = CURRENT_TIMESTAMP(),
+                annotation_status = 'COMPLETED'
+            WHERE WoundAssessmentID = {wound_assessment_id}
+            """
+
+            print(f"Executing update query: {query}")
+            cursor = self.connection.cursor()
+            cursor.execute(query)
+            self.connection.commit()
+            cursor.close()
+
+            return True
+
+        except Exception as e:
+            print(f"Error saving annotations: {str(e)}")
+            return False
+
+    def get_all_wound_paths(self) -> list:
+        """Get all unique image paths"""
+        try:
+            if not self.connection:
+                self.connect()
+
+            query = """
+            SELECT DISTINCT path 
+            FROM wcr_wound_detection.wcr_wound.wcr_annotation_initial
+            ORDER BY path
+            """
+
+            cursor = self.connection.cursor()
+            cursor.execute(query)
+            results = cursor.fetchall()
+            cursor.close()
+
+            return [row[0] for row in results]
+
+        except Exception as e:
+            print(f"Error fetching image paths: {str(e)}")
+            return []
+
+    def get_wound_types(self) -> list:
+        """Get all unique wound types"""
+        try:
+            if not self.connection:
+                self.connect()
+
+            query = """
+            SELECT DISTINCT WoundType 
+            FROM wcr_wound_detection.wcr_wound.wcr_annotation_initial
+            WHERE WoundType IS NOT NULL
+            ORDER BY WoundType
+            """
+
+            cursor = self.connection.cursor()
+            cursor.execute(query)
+            results = cursor.fetchall()
+            cursor.close()
+
+            return [row[0] for row in results]
+
+        except Exception as e:
+            print(f"Error fetching wound types: {str(e)}")
+            return []
+
+    def get_body_locations(self) -> list:
+        """Get all unique body locations"""
+        try:
+            if not self.connection:
+                self.connect()
+
+            query = """
+            SELECT DISTINCT WoundLocationLocation 
+            FROM wcr_wound_detection.wcr_wound.wcr_annotation_initial
+            WHERE WoundLocationLocation IS NOT NULL
+            ORDER BY WoundLocationLocation
+            """
+
+            cursor = self.connection.cursor()
+            cursor.execute(query)
+            results = cursor.fetchall()
+            cursor.close()
+
+            return [row[0] for row in results]
+
+        except Exception as e:
+            print(f"Error fetching body locations: {str(e)}")
+            return []
+
     def close(self):
         """Close the Databricks connection"""
         if self.connection:

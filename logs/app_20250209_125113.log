@@ -1,0 +1,1 @@
+2025-02-09 12:51:13,936 - __main__ - ERROR - Database initialization failed: name 'DatabricksConnector' is not defined

@@ -1,0 +1,3 @@
+2025-02-09 13:40:15,995 - databricks.sql.client - INFO - Successfully opened session 01efe715-4dee-131d-b4dd-dbef53d76d7f
+2025-02-09 13:40:30,484 - __main__ - INFO - Login cancelled by user
+2025-02-09 13:40:30,484 - databricks.sql.client - INFO - Closing session 01efe715-4dee-131d-b4dd-dbef53d76d7f

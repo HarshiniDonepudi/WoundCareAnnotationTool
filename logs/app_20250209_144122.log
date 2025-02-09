@@ -1,0 +1,3 @@
+2025-02-09 14:41:27,119 - databricks.sql.client - INFO - Successfully opened session 01efe71d-d9ec-13f4-ac91-2c0f7b70f83f
+2025-02-09 14:41:56,987 - __main__ - ERROR - Application error: 'AnnotationWidget' object has no attribute 'db'
+2025-02-09 14:42:01,345 - databricks.sql.client - INFO - Closing session 01efe71d-d9ec-13f4-ac91-2c0f7b70f83f

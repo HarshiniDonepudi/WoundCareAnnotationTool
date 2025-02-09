@@ -1,0 +1,6 @@
+2025-02-09 13:29:11,868 - databricks.sql.client - INFO - Successfully opened session 01efe713-c217-1d47-959e-470eb21d07f8
+2025-02-09 13:29:13,988 - __main__ - ERROR - Database initialization failed: [WRONG_COLUMN_DEFAULTS_FOR_DELTA_FEATURE_NOT_ENABLED] Failed to execute CREATE TABLE command because it assigned a column DEFAULT value,
+but the corresponding table feature was not enabled. Please retry the command again
+after executing ALTER TABLE tableName SET
+TBLPROPERTIES('delta.feature.allowColumnDefaults' = 'supported').
+2025-02-09 13:29:15,357 - databricks.sql.client - INFO - Closing session 01efe713-c217-1d47-959e-470eb21d07f8

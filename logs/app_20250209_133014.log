@@ -1,0 +1,8 @@
+2025-02-09 13:30:14,971 - databricks.sql.client - INFO - Successfully opened session 01efe713-e7b0-1789-b280-97c51ca658e5
+2025-02-09 13:30:15,081 - __main__ - ERROR - Database initialization failed: 
+[UNSUPPORTED_DATATYPE] Unsupported data type "TINYINT(1)". SQLSTATE: 0A000
+== SQL (line 10, position 27) ==
+                is_active TINYINT(1) DEFAULT 1
+                          ^^^^^^^^^^
+
+2025-02-09 13:30:17,096 - databricks.sql.client - INFO - Closing session 01efe713-e7b0-1789-b280-97c51ca658e5

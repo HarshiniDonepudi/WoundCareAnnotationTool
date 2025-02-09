@@ -1,143 +1,108 @@
-# main_window.py
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, 
-                           QPushButton, QProgressBar, QGroupBox, QFileDialog, 
-                           QMessageBox, QApplication)
+from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
+ QPushButton, QLabel, QMessageBox, QToolBar, QStatusBar)
 from PyQt5.QtCore import Qt
-import os
-from gui.annotation_widget import AnnotationWidget
-from gui.image_list_widget import ImageListWidget
+from .annotation_widget import AnnotationWidget
+from .image_list_widget import ImageListWidget
+from databricks import sql
+from config import Config
+from database.databricks_connecter import DatabricksConnector 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, user_manager, user_profile, parent=None):
+        super().__init__(parent)
+        self.user_manager = user_manager
+        self.user_profile = user_profile
+        
+        # Create Databricks connector
+        self.db_connector = DatabricksConnector()
+        
+        # Pass db_connector to ImageListWidget
+        self.image_list = ImageListWidget(self.db_connector)
+        
+        # Pass db_connector to AnnotationWidget
+        self.annotation_widget = AnnotationWidget(
+            db_connector=self.db_connector,
+            user_profile=self.user_profile
+        )
+
+        self.setup_ui()
+
+    def setup_ui(self):
         self.setWindowTitle("Wound Annotation Tool")
         self.setGeometry(100, 100, 1200, 800)
         
-        # Create main widget and layout
+        # Setup status bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        
+        # Main widget and layout
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         layout = QHBoxLayout(main_widget)
         
-        # Create left panel for file upload and image list
+        # Image list panel
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         
-        # Add upload button
-        upload_group = QGroupBox("File Upload")
-        upload_layout = QVBoxLayout()
-        
-        # Single file upload
-        single_upload_btn = QPushButton("Upload Single File")
-        single_upload_btn.clicked.connect(self.upload_single_file)
-        upload_layout.addWidget(single_upload_btn)
-        
-        # Multiple files upload
-        multi_upload_btn = QPushButton("Upload Multiple Files")
-        multi_upload_btn.clicked.connect(self.upload_multiple_files)
-        upload_layout.addWidget(multi_upload_btn)
-        
-        # Directory upload
-        dir_upload_btn = QPushButton("Upload Directory")
-        dir_upload_btn.clicked.connect(self.upload_directory)
-        upload_layout.addWidget(dir_upload_btn)
-        
-        # Progress bar
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        upload_layout.addWidget(self.progress_bar)
-        
-        upload_group.setLayout(upload_layout)
-        left_layout.addWidget(upload_group)
-        
-        # Create image list widget
-        self.image_list = ImageListWidget()
+        # Initialize image_list with the Databricks connector
+        self.image_list = ImageListWidget(self.db_connector)
         left_layout.addWidget(self.image_list)
-        
         layout.addWidget(left_panel, 1)
         
-        # Create annotation widget
-        self.annotation_widget = AnnotationWidget()
+        # Annotation widget - pass the Databricks connector
+        self.annotation_widget = AnnotationWidget(
+            db_connector=self.db_connector,
+            user_profile=self.user_profile
+        )
         layout.addWidget(self.annotation_widget, 3)
         
         # Connect signals
         self.image_list.image_selected.connect(self.annotation_widget.load_image)
-    
-    def upload_single_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select File",
-            "",
-            "All Files (*.*)"  # Accept all file types
-        )
-        if file_path:
-            self.load_binary_files([file_path])
-    
-    def upload_multiple_files(self):
-        file_paths, _ = QFileDialog.getOpenFileNames(
-            self,
-            "Select Files",
-            "",
-            "All Files (*.*)"  # Accept all file types
-        )
-        if file_paths:
-            self.load_binary_files(file_paths)
-    
-    def upload_directory(self):
-        dir_path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Directory with Files"
-        )
-        if dir_path:
-            file_paths = []
-            for file_name in os.listdir(dir_path):
-                file_paths.append(os.path.join(dir_path, file_name))
-            if file_paths:
-                self.load_binary_files(file_paths)
-            else:
-                QMessageBox.warning(self, "No Files Found", "No files found in the selected directory.")
-    
-    def load_binary_files(self, file_paths):
-        """
-        Load files and update progress bar
-        """
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setMaximum(len(file_paths))
-        self.progress_bar.setValue(0)
         
-        binary_text_files = {}
+        # Setup toolbar
+        self.setup_toolbar()
+
+
+    def setup_toolbar(self):
+        toolbar = self.addToolBar("Main")
+
+        # ✅ User info
+        user_label = QLabel(f"User: {self.user_profile.full_name}")
+        toolbar.addWidget(user_label)
+
+        role_label = QLabel(f"Role: {self.user_profile.role}")
+        toolbar.addWidget(role_label)
+
+        toolbar.addSeparator()
+
+        # ✅ Refresh button
+        refresh_btn = QPushButton("Refresh")
+        refresh_btn.clicked.connect(self.image_list.load_wound_list)  # ✅ `self.image_list` is now defined
+        toolbar.addWidget(refresh_btn)
+
+        toolbar.addSeparator()
+
+        # ✅ Logout button
+        logout_btn = QPushButton("Logout")
+        logout_btn.clicked.connect(self.logout)
+        toolbar.addWidget(logout_btn)
+
         
-        for i, file_path in enumerate(file_paths):
-            try:
-                # Extract ID from filename
-                file_name = os.path.basename(file_path)
-                file_id = os.path.splitext(file_name)[0]  # Remove extension
-                
-                # Read file content
-                with open(file_path, 'rb') as f:  # Open in binary mode
-                    content = f.read()
-                    
-                # Try to decode as text if it's a text file
-                try:
-                    content = content.decode('utf-8')
-                except UnicodeDecodeError:
-                    # If not text, use binary content as is
-                    pass
-                
-                # Add to dictionary
-                binary_text_files[file_id] = content
-                
-                # Update progress
-                self.progress_bar.setValue(i + 1)
-                QApplication.processEvents()  # Keep UI responsive
-                
-            except Exception as e:
-                QMessageBox.warning(
-                    self,
-                    "Error Loading File",
-                    f"Error loading {file_path}: {str(e)}"
-                )
+    def logout(self):
+        reply = QMessageBox.question(
+            self,
+            'Logout',
+            'Are you sure you want to logout?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
         
-        if binary_text_files:
-            self.image_list.load_binary_text_data(binary_text_files)
+        if reply == QMessageBox.Yes:
+            if self.user_profile.session_token:
+                self.user_manager.logout_user(self.user_profile.session_token)
+            self.close()
             
-        self.progress_bar.setVisible(False)
+    def closeEvent(self, event):
+        if self.user_profile.session_token:
+            self.user_manager.logout_user(self.user_profile.session_token)
+        event.accept()

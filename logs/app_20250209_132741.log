@@ -1,0 +1,20 @@
+2025-02-09 13:27:42,022 - databricks.sql.client - INFO - Successfully opened session 01efe713-8c88-1a7b-9ea7-ba1c5dc4a5de
+2025-02-09 13:27:42,177 - __main__ - ERROR - Database initialization failed: 
+[PARSE_SYNTAX_ERROR] Syntax error at or near 'UNIQUE'. SQLSTATE: 42601 (line 4, pos 38)
+
+== SQL ==
+
+            CREATE TABLE IF NOT EXISTS wcr_wound_detection.wcr_wound.user_info (
+                user_id VARCHAR(36) PRIMARY KEY,
+                username VARCHAR(255) UNIQUE,
+--------------------------------------^^^
+                password_hash VARCHAR(255),
+                full_name VARCHAR(255),
+                role VARCHAR(50),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP NULL,
+                is_active TINYINT(1) DEFAULT 1
+            )
+            
+
+2025-02-09 13:27:44,823 - databricks.sql.client - INFO - Closing session 01efe713-8c88-1a7b-9ea7-ba1c5dc4a5de
