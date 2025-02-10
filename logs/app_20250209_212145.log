@@ -1,0 +1,2 @@
+2025-02-09 21:21:46,278 - databricks.sql.client - INFO - Successfully opened session 01efe755-c6a9-1911-8d34-172fb5c91109
+2025-02-09 21:22:17,992 - databricks.sql.client - INFO - Closing session 01efe755-c6a9-1911-8d34-172fb5c91109

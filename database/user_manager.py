@@ -57,11 +57,12 @@ class UserManager:
             if not self.db.connection:
                 self.db.connect()
 
-            # Check if username exists
+            # Check if username exists using %s placeholder
             cursor = self.db.connection.cursor()
-            cursor.execute("SELECT 1 FROM wcr_wound_detection.wcr_wound.users WHERE username = ?", (username,))
+            cursor.execute("SELECT 1 FROM wcr_wound_detection.wcr_wound.users WHERE username = %s", (username,))
             if cursor.fetchone():
                 print(f"Username {username} already exists")
+                cursor.close()
                 return None
 
             # Generate user_id and hash password
@@ -69,13 +70,13 @@ class UserManager:
             password_hash = hashlib.sha256(password.encode()).hexdigest()
             current_time = datetime.now()
 
-            # Insert new user
+            # Insert new user using %s placeholders
             query = """
-            INSERT INTO wcr_wound_detection.wcr_wound.users 
-            (user_id, username, password_hash, full_name, role, created_at, is_active)
-            VALUES (?, ?, ?, ?, ?, ?, TRUE)
-            """
-            
+                INSERT INTO wcr_wound_detection.wcr_wound.users 
+                (user_id, username, password_hash, full_name, role, created_at, is_active)
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                """
+                
             cursor.execute(query, (user_id, username, password_hash, full_name, role, current_time))
             self.db.connection.commit()
             cursor.close()
@@ -90,6 +91,7 @@ class UserManager:
         except Exception as e:
             print(f"Error creating user: {str(e)}")
             return None
+
 
     def authenticate_user(self, username: str, password: str) -> Optional[UserProfile]:
         """Authenticate user and create session"""

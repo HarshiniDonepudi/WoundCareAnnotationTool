@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                           QLineEdit, QPushButton, QMessageBox)
+                               QLineEdit, QPushButton, QMessageBox)
 from PyQt5.QtCore import Qt
-
+from .register_dialog import RegisterDialog  # Import the registration dialog
 
 class LoginDialog(QDialog):
     def __init__(self, user_manager, parent=None):
@@ -39,7 +39,9 @@ class LoginDialog(QDialog):
         login_btn.clicked.connect(self.try_login)
         button_layout.addWidget(login_btn)
         
-
+        register_btn = QPushButton("Register")
+        register_btn.clicked.connect(self.open_register_dialog)
+        button_layout.addWidget(register_btn)
         
         cancel_btn = QPushButton("Cancel")
         cancel_btn.clicked.connect(self.reject)
@@ -47,13 +49,11 @@ class LoginDialog(QDialog):
         
         layout.addLayout(button_layout)
         
-        # Set default button and connect Enter key
+        # Set default button and connect Enter key navigation.
         login_btn.setDefault(True)
         self.username_input.returnPressed.connect(self.password_input.setFocus)
         self.password_input.returnPressed.connect(self.try_login)
         
-
-
     def try_login(self):
         username = self.username_input.text().strip()
         password = self.password_input.text()
@@ -69,3 +69,11 @@ class LoginDialog(QDialog):
             QMessageBox.warning(self, "Error", "Invalid username or password")
             self.password_input.clear()
             self.password_input.setFocus()
+            
+    def open_register_dialog(self):
+        # Create and show the registration dialog.
+        dialog = RegisterDialog(self.user_manager, self)
+        if dialog.exec_() == QDialog.Accepted:
+            # If registration is successful, store the user profile and accept the dialog.
+            self.user_profile = dialog.user_profile
+            self.accept()
