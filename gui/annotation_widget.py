@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                               QPushButton, QComboBox, QGroupBox, QScrollArea,
                               QMessageBox, QLineEdit, QFrame, QSizePolicy, 
                               QFileDialog, QRubberBand)
-from PyQt5.QtCore import Qt, QRect, QPoint, QEvent
+from PyQt5.QtCore import Qt, QRect, QEvent
 from PyQt5.QtGui import QPainter, QColor, QPen, QPixmap
 from datetime import datetime
 from utils.image_utils import ImageHandler
@@ -20,14 +20,16 @@ class AnnotationMode:
 
 # -------------------------------------------------------------------------
 # A custom QRubberBand subclass that draws a colored border and displays
-# its coordinates (x,y,width,height) on the annotation.
+# its coordinates (x, y, width, height) and annotation info (wound type,
+# body map id, and location) on the rubber band.
 # Also supports a "selected" flag so that a selected annotation is drawn in yellow.
 # -------------------------------------------------------------------------
 class ColoredRubberBand(QRubberBand):
-    def __init__(self, shape, parent=None, color="#FF0000"):
+    def __init__(self, shape, parent=None, color="#FF0000", annotation_info=""):
         super().__init__(shape, parent)
         self._color = color
         self.selected = False
+        self.annotation_info = annotation_info
 
     def setSelected(self, selected: bool):
         self.selected = selected
@@ -40,10 +42,14 @@ class ColoredRubberBand(QRubberBand):
         pen.setWidth(2)
         painter.setPen(pen)
         painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
+        # Draw coordinate text in the upper-left corner.
         rect = self.rect()
-        text = f"{rect.x()},{rect.y()}  {rect.width()}x{rect.height()}"
+        coord_text = f"{rect.x()},{rect.y()}  {rect.width()}x{rect.height()}"
         painter.setPen(QColor("black"))
-        painter.drawText(rect.adjusted(3, 3, -3, -3), Qt.AlignLeft | Qt.AlignTop, text)
+        painter.drawText(rect.adjusted(3, 3, -3, -3), Qt.AlignLeft | Qt.AlignTop, coord_text)
+        # Draw annotation info below the coordinates.
+        if self.annotation_info:
+            painter.drawText(rect.adjusted(3, 20, -3, -3), Qt.AlignLeft, self.annotation_info)
         painter.end()
 
 # -------------------------------------------------------------------------
@@ -54,7 +60,7 @@ class AnnotationOverlay(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.annotations = []
+        self.annotations = []  # List of dicts: each has keys 'rect' and 'color'
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -86,7 +92,7 @@ class AnnotationWidget(QWidget):
         self.current_wound_id = None
         self.current_mode = AnnotationMode.CREATE
         self.selected_box = None
-        self.boxes = []
+        self.boxes = []  # List of dictionaries storing annotation info.
         self.category_colors = Config.CATEGORY_COLORS
         self.current_color = "#FF0000"
         self.setup_ui()
@@ -94,9 +100,11 @@ class AnnotationWidget(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         
-        # Top info panel
+        # --- Top info panel ---
         info_panel = QGroupBox("Wound Information")
         info_layout = QHBoxLayout()
+        
+        # Wound Type
         wound_type_layout = QVBoxLayout()
         wound_type_label = QLabel("Databricks Wound Type:")
         self.wound_type_display = QLabel("Not loaded")
@@ -104,6 +112,8 @@ class AnnotationWidget(QWidget):
         wound_type_layout.addWidget(wound_type_label)
         wound_type_layout.addWidget(self.wound_type_display)
         info_layout.addLayout(wound_type_layout)
+        
+        # Body Location
         body_location_layout = QVBoxLayout()
         body_location_label = QLabel("Databricks Body Location:")
         self.body_location_display = QLabel("Not loaded")
@@ -111,6 +121,8 @@ class AnnotationWidget(QWidget):
         body_location_layout.addWidget(body_location_label)
         body_location_layout.addWidget(self.body_location_display)
         info_layout.addLayout(body_location_layout)
+        
+        # Body Map ID input
         body_map_layout = QVBoxLayout()
         body_map_label = QLabel("Body Map ID:")
         self.body_map_input = QLineEdit()
@@ -121,15 +133,16 @@ class AnnotationWidget(QWidget):
         body_map_layout.addWidget(self.body_map_input)
         body_map_layout.addWidget(view_map_btn)
         info_layout.addLayout(body_map_layout)
+        
         info_panel.setLayout(info_layout)
         layout.addWidget(info_panel)
         
-        # Mode indicator
+        # --- Mode indicator ---
         self.mode_label = QLabel("Mode: Create")
         self.mode_label.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px; border-radius: 3px;")
         layout.addWidget(self.mode_label)
         
-        # Image display area with scroll
+        # --- Image display area with scroll ---
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -138,14 +151,14 @@ class AnnotationWidget(QWidget):
         self.image_label.setAlignment(Qt.AlignCenter)
         self.scroll_area.setWidget(self.image_label)
         layout.addWidget(self.scroll_area)
-
-        # Annotation overlay
+        
+        # --- Annotation overlay ---
         self.annotation_overlay = AnnotationOverlay(self.image_label)
         self.annotation_overlay.setGeometry(self.image_label.rect())
         self.annotation_overlay.setStyleSheet("background: transparent;")
         self.annotation_overlay.show()
-
-        # Controls: Category & Location
+        
+        # --- Controls: Category & Location ---
         controls_layout = QHBoxLayout()
         category_group = QGroupBox("Wound Category")
         category_layout = QVBoxLayout()
@@ -156,6 +169,7 @@ class AnnotationWidget(QWidget):
         category_layout.addWidget(self.category_combo)
         category_group.setLayout(category_layout)
         controls_layout.addWidget(category_group)
+        
         location_group = QGroupBox("Body Location")
         location_layout = QVBoxLayout()
         self.location_combo = QComboBox()
@@ -165,7 +179,7 @@ class AnnotationWidget(QWidget):
         controls_layout.addWidget(location_group)
         layout.addLayout(controls_layout)
         
-        # Annotation controls
+        # --- Annotation controls ---
         annotation_controls = QHBoxLayout()
         self.mode_toggle_btn = QPushButton("Toggle Edit Mode")
         self.mode_toggle_btn.clicked.connect(self.toggle_mode)
@@ -184,25 +198,36 @@ class AnnotationWidget(QWidget):
         annotation_controls.addWidget(save_btn)
         layout.addLayout(annotation_controls)
         
-        # Status bar
+        # --- Status bar ---
         self.status_label = QLabel()
         self.status_label.setFrameStyle(QFrame.Panel | QFrame.Sunken)
         layout.addWidget(self.status_label)
         
-        # Drawing variables
+        # --- Drawing variables ---
         self.drawing = False
         self.start_point = None
         self.current_box = None
         self.current_color = "#FF0000"
         
-        # Event filter to update overlay geometry.
+        # Install event filter on the scroll area's viewport.
         self.scroll_area.viewport().installEventFilter(self)
         
+    # ---------------------------------------------------------------------
+    # Update UI fields from a selected annotation.
+    # ---------------------------------------------------------------------
+    def update_ui_fields_from_annotation(self, annotation):
+        self.category_combo.setCurrentText(annotation['category'])
+        self.location_combo.setCurrentText(annotation.get('location', ''))
+        self.body_map_input.setText(annotation.get('body_map_id', ''))
+        
+    # ---------------------------------------------------------------------
     # Image and Annotation Loading
+    # ---------------------------------------------------------------------
     def load_image(self, wound_id):
         try:
             self.clearAnnotations()
             self.current_wound_id = wound_id
+            # Load the wound assessment.
             wound_info = self.db_connector.get_wound_assessment(wound_id)
             print(f"Received wound info: {wound_info}")
             if wound_info:
@@ -212,13 +237,26 @@ class AnnotationWidget(QWidget):
                         scroll_size = self.scroll_area.size()
                         pixmap = pixmap.scaled(scroll_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                         self.image_label.setPixmap(pixmap)
+                        self.image_label.adjustSize()  # Resize the label to match the pixmap.
                         self.annotation_overlay.setGeometry(self.image_label.rect())
                         self.wound_type_display.setText(str(wound_info.wound_type))
                         self.body_location_display.setText(str(wound_info.body_location))
                         self.category_combo.setCurrentText(wound_info.wound_type)
                         self.location_combo.setCurrentText(wound_info.body_location)
-                        if wound_info.annotations:
-                            self.load_existing_annotations(wound_info.annotations)
+                        # Check if annotation already exists in the annotation table.
+                        annotations_data = self.db_connector.get_annotations(wound_info.wound_assessment_id)
+                        if annotations_data and annotations_data.get('boxes'):
+                            # If annotations exist, load them and force EDIT mode.
+                            self.load_existing_annotations(annotations_data)
+                            self.current_mode = AnnotationMode.EDIT
+                            self.mode_label.setText("Mode: Edit")
+                            self.mode_label.setStyleSheet("background-color: #2196F3; color: white; padding: 5px; border-radius: 3px;")
+                            self.mode_toggle_btn.setVisible(False)
+                        else:
+                            self.current_mode = AnnotationMode.CREATE
+                            self.mode_label.setText("Mode: Create")
+                            self.mode_label.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px; border-radius: 3px;")
+                            self.mode_toggle_btn.setVisible(True)
                         self.status_label.setText(f"Loaded wound assessment {wound_id}")
                     else:
                         QMessageBox.warning(self, "Error", "Failed to decode image")
@@ -234,16 +272,25 @@ class AnnotationWidget(QWidget):
         try:
             if isinstance(annotations_data, str):
                 annotations_data = json.loads(annotations_data)
+            if self.image_label.pixmap():
+                displayed_size = self.image_label.pixmap().size()
+                print("Displayed image size:", displayed_size)
+            else:
+                print("No pixmap found in image_label.")
             for box_data in annotations_data.get('boxes', []):
+                print("Loading annotation:", box_data)
                 color = self.category_colors.get(box_data['category'], "#FF0000")
-                rubber_band = ColoredRubberBand(QRubberBand.Rectangle, self.image_label, color)
-                rubber_band.setGeometry(QRect(
+                # Assume stored coordinates match the displayed image.
+                rect = QRect(
                     box_data['x'], box_data['y'],
                     box_data['width'], box_data['height']
-                ))
+                )
+                annotation_info = f"Type: {box_data['category']}, Map: {box_data.get('body_map_id','')}, Loc: {box_data['location']}"
+                rubber_band = ColoredRubberBand(QRubberBand.Rectangle, self.image_label, color, annotation_info)
+                rubber_band.setGeometry(rect)
                 rubber_band.show()
                 self.boxes.append({
-                    'box': rubber_band.geometry(),
+                    'box': rect,
                     'rubber_band': rubber_band,
                     'category': box_data['category'],
                     'location': box_data['location'],
@@ -258,7 +305,10 @@ class AnnotationWidget(QWidget):
         except Exception as e:
             print(f"Error loading annotations: {str(e)}")
             
+    # ---------------------------------------------------------------------
     # Mouse event handling for drawing/editing annotations.
+    # Coordinates are mapped relative to image_label.
+    # ---------------------------------------------------------------------
     def mousePressEvent(self, event):
         local_pos = self.image_label.mapFrom(self, event.pos())
         if event.button() == Qt.LeftButton:
@@ -297,12 +347,15 @@ class AnnotationWidget(QWidget):
                 self.show_annotation_info(box)
                 break
 
+    # ---------------------------------------------------------------------
     # Finalizing annotation creation/editing
+    # ---------------------------------------------------------------------
     def finish_create_annotation(self):
         if self.drawing and self.current_box:
             box_geometry = self.current_box.geometry()
             now = datetime.now()
-            permanent_box = ColoredRubberBand(QRubberBand.Rectangle, self.image_label, self.current_color)
+            annotation_info = f"Type: {self.category_combo.currentText()}, Map: {self.body_map_input.text().strip()}, Loc: {self.location_combo.currentText()}"
+            permanent_box = ColoredRubberBand(QRubberBand.Rectangle, self.image_label, self.current_color, annotation_info)
             permanent_box.setGeometry(box_geometry)
             permanent_box.show()
             self.boxes.append({
@@ -310,7 +363,7 @@ class AnnotationWidget(QWidget):
                 'rubber_band': permanent_box,
                 'category': self.category_combo.currentText(),
                 'location': self.location_combo.currentText(),
-                'body_map_id': self.body_map_input.text(),
+                'body_map_id': self.body_map_input.text().strip(),
                 'created_by': self.user_profile.username,
                 'created_at': now,
                 'last_modified_by': self.user_profile.username,
@@ -328,12 +381,17 @@ class AnnotationWidget(QWidget):
             self.selected_box = None
             self.status_label.setText("Updated annotation position")
             
+    # ---------------------------------------------------------------------
     # Mode toggling and selection
+    # ---------------------------------------------------------------------
     def toggle_mode(self):
+        # In this version, if annotations are already present, we force edit mode.
+        # (The toggle button is hidden if annotations exist.)
         if self.current_mode == AnnotationMode.CREATE:
             self.current_mode = AnnotationMode.EDIT
             self.mode_label.setText("Mode: Edit")
             self.mode_label.setStyleSheet("background-color: #2196F3; color: white; padding: 5px; border-radius: 3px;")
+            self.mode_toggle_btn.setVisible(False)
         else:
             self.current_mode = AnnotationMode.CREATE
             self.mode_label.setText("Mode: Create")
@@ -348,10 +406,16 @@ class AnnotationWidget(QWidget):
                 self.selected_box = box
                 self.highlight_selected_box()
                 self.delete_btn.setEnabled(True)
+                self.update_ui_fields_from_annotation(box)
                 return
         self.selected_box = None
         self.delete_btn.setEnabled(False)
         self.clear_highlights()
+        
+    def update_ui_fields_from_annotation(self, annotation):
+        self.category_combo.setCurrentText(annotation['category'])
+        self.location_combo.setCurrentText(annotation.get('location', ''))
+        self.body_map_input.setText(annotation.get('body_map_id', ''))
         
     def highlight_selected_box(self):
         self.clear_highlights()
@@ -388,7 +452,9 @@ class AnnotationWidget(QWidget):
                     self.undo_btn.setEnabled(False)
                 self.status_label.setText("Deleted annotation")
                 
+    # ---------------------------------------------------------------------
     # Saving and exporting/importing annotations
+    # ---------------------------------------------------------------------
     def save_annotations_to_databricks(self):
         if not self.current_wound_id or not self.boxes:
             QMessageBox.warning(self, "Warning", "No annotations to save")
@@ -397,12 +463,10 @@ class AnnotationWidget(QWidget):
             self.status_label.setText("Saving annotations...")
             annotations = []
             for box in self.boxes:
-                # If the stored body_map_id is empty, try reading from the QLineEdit.
                 body_map_id_val = box.get('body_map_id', '').strip() or self.body_map_input.text().strip()
-                # Pass datetime objects as ISO strings (or as datetime objects if your driver accepts them)
                 created_at = (box['created_at'].isoformat() 
-                            if isinstance(box['created_at'], datetime) 
-                            else box['created_at'])
+                              if isinstance(box['created_at'], datetime) 
+                              else box['created_at'])
                 last_modified_at = (box['last_modified_at'].isoformat() 
                                     if isinstance(box['last_modified_at'], datetime) 
                                     else box['last_modified_at'])
@@ -419,7 +483,6 @@ class AnnotationWidget(QWidget):
                     'last_modified_by': box.get('last_modified_by', self.user_profile.username),
                     'last_modified_at': last_modified_at
                 })
-            # Print the annotation JSON for visualization.
             print("Annotation JSON:")
             print(json.dumps(annotations, indent=4))
             
@@ -434,8 +497,6 @@ class AnnotationWidget(QWidget):
             print(f"Error saving annotations: {str(e)}")
             self.status_label.setText("Error saving annotations")
             QMessageBox.critical(self, "Error", f"Failed to save annotations: {str(e)}")
-
-
             
     def export_annotations(self, format='json'):
         if not self.boxes:
@@ -483,7 +544,8 @@ class AnnotationWidget(QWidget):
             self.clearAnnotations()
             for box_data in data.get('boxes', []):
                 color = self.category_colors.get(box_data['category'], "#FF0000")
-                rubber_band = ColoredRubberBand(QRubberBand.Rectangle, self.image_label, color)
+                annotation_info = f"Type: {box_data['category']}, Map: {box_data.get('body_map_id','')}, Loc: {box_data['location']}"
+                rubber_band = ColoredRubberBand(QRubberBand.Rectangle, self.image_label, color, annotation_info)
                 rubber_band.setGeometry(QRect(
                     box_data['x'], box_data['y'],
                     box_data['width'], box_data['height']
