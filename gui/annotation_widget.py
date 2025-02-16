@@ -90,7 +90,9 @@ class AnnotationWidget(QWidget):
         self.user_profile = user_profile
         self.image_handler = ImageHandler()
         self.current_wound_id = None
-        self.current_mode = AnnotationMode.CREATE
+        # We'll set the default mode to EDIT so that even if annotations exist,
+        # you can add new ones.
+        self.current_mode = AnnotationMode.EDIT  
         self.selected_box = None
         self.boxes = []  # List of dictionaries storing annotation info.
         self.category_colors = Config.CATEGORY_COLORS
@@ -137,9 +139,21 @@ class AnnotationWidget(QWidget):
         info_panel.setLayout(info_layout)
         layout.addWidget(info_panel)
         
+        patient_id_layout = QVBoxLayout()
+        patient_id_label = QLabel("Patient ID:")
+        self.patient_id_display = QLabel("Not loaded")
+        self.patient_id_display.setStyleSheet("font-weight: bold;")
+        patient_id_layout.addWidget(patient_id_label)
+        patient_id_layout.addWidget(self.patient_id_display)
+        info_layout.addLayout(patient_id_layout)
+        
+        info_panel.setLayout(info_layout)
+        layout.addWidget(info_panel)
+        
         # --- Mode indicator ---
-        self.mode_label = QLabel("Mode: Create")
-        self.mode_label.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px; border-radius: 3px;")
+        # Even though the default mode is EDIT, the label will display accordingly.
+        self.mode_label = QLabel("Mode: Edit")
+        self.mode_label.setStyleSheet("background-color: #2196F3; color: white; padding: 5px; border-radius: 3px;")
         layout.addWidget(self.mode_label)
         
         # --- Image display area with scroll ---
@@ -183,20 +197,37 @@ class AnnotationWidget(QWidget):
         annotation_controls = QHBoxLayout()
         self.mode_toggle_btn = QPushButton("Toggle Edit Mode")
         self.mode_toggle_btn.clicked.connect(self.toggle_mode)
+        # The toggle button remains visible so the user can switch if desired.
         annotation_controls.addWidget(self.mode_toggle_btn)
+        
         self.undo_btn = QPushButton("Undo Last Box")
         self.undo_btn.clicked.connect(self.undo_last_box)
         self.undo_btn.setEnabled(False)
         annotation_controls.addWidget(self.undo_btn)
+        
         self.delete_btn = QPushButton("Delete Selected")
         self.delete_btn.clicked.connect(self.delete_selected_box)
         self.delete_btn.setEnabled(False)
         annotation_controls.addWidget(self.delete_btn)
+        
+        self.update_btn = QPushButton("Update Annotation")
+        self.update_btn.clicked.connect(self.update_selected_annotation)
+        self.update_btn.setEnabled(False)
+        annotation_controls.addWidget(self.update_btn)
+        
         save_btn = QPushButton("Save Annotations")
         save_btn.clicked.connect(self.save_annotations_to_databricks)
         save_btn.setStyleSheet("background-color: #4CAF50; color: white;")
         annotation_controls.addWidget(save_btn)
         layout.addLayout(annotation_controls)
+        
+        # --- Annotation Counter Screen ---
+        counter_group = QGroupBox("Annotation Counters")
+        counter_layout = QVBoxLayout()
+        self.counter_label = QLabel("No annotations")
+        counter_layout.addWidget(self.counter_label)
+        counter_group.setLayout(counter_layout)
+        layout.addWidget(counter_group)
         
         # --- Status bar ---
         self.status_label = QLabel()
@@ -221,13 +252,25 @@ class AnnotationWidget(QWidget):
         self.body_map_input.setText(annotation.get('body_map_id', ''))
         
     # ---------------------------------------------------------------------
+    # Update the annotation counter.
+    # ---------------------------------------------------------------------
+    def update_annotation_counter(self):
+        counts = {}
+        for box in self.boxes:
+            cat = box.get('category', 'Unknown')
+            counts[cat] = counts.get(cat, 0) + 1
+        counter_str = ", ".join(f"{cat}: {count}" for cat, count in counts.items())
+        if not counter_str:
+            counter_str = "No annotations"
+        self.counter_label.setText(counter_str)
+        
+    # ---------------------------------------------------------------------
     # Image and Annotation Loading
     # ---------------------------------------------------------------------
     def load_image(self, wound_id):
         try:
             self.clearAnnotations()
             self.current_wound_id = wound_id
-            # Load the wound assessment.
             wound_info = self.db_connector.get_wound_assessment(wound_id)
             print(f"Received wound info: {wound_info}")
             if wound_info:
@@ -237,27 +280,30 @@ class AnnotationWidget(QWidget):
                         scroll_size = self.scroll_area.size()
                         pixmap = pixmap.scaled(scroll_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                         self.image_label.setPixmap(pixmap)
-                        self.image_label.adjustSize()  # Resize the label to match the pixmap.
+                        self.image_label.adjustSize()
                         self.annotation_overlay.setGeometry(self.image_label.rect())
                         self.wound_type_display.setText(str(wound_info.wound_type))
                         self.body_location_display.setText(str(wound_info.body_location))
                         self.category_combo.setCurrentText(wound_info.wound_type)
                         self.location_combo.setCurrentText(wound_info.body_location)
-                        # Check if annotation already exists in the annotation table.
+                        # Update patient id (if available)
+                        if hasattr(wound_info, 'patient_id') and wound_info.patient_id:
+                            self.patient_id_display.setText(str(wound_info.patient_id))
+                        else:
+                            self.patient_id_display.setText("Not loaded")
+                        # Check if annotations exist.
                         annotations_data = self.db_connector.get_annotations(wound_info.wound_assessment_id)
                         if annotations_data and annotations_data.get('boxes'):
-                            # If annotations exist, load them and force EDIT mode.
                             self.load_existing_annotations(annotations_data)
                             self.current_mode = AnnotationMode.EDIT
                             self.mode_label.setText("Mode: Edit")
                             self.mode_label.setStyleSheet("background-color: #2196F3; color: white; padding: 5px; border-radius: 3px;")
-                            self.mode_toggle_btn.setVisible(False)
                         else:
-                            self.current_mode = AnnotationMode.CREATE
-                            self.mode_label.setText("Mode: Create")
-                            self.mode_label.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px; border-radius: 3px;")
-                            self.mode_toggle_btn.setVisible(True)
+                            self.current_mode = AnnotationMode.EDIT
+                            self.mode_label.setText("Mode: Edit")
+                            self.mode_label.setStyleSheet("background-color: #2196F3; color: white; padding: 5px; border-radius: 3px;")
                         self.status_label.setText(f"Loaded wound assessment {wound_id}")
+                        self.update_annotation_counter()
                     else:
                         QMessageBox.warning(self, "Error", "Failed to decode image")
                 else:
@@ -280,7 +326,6 @@ class AnnotationWidget(QWidget):
             for box_data in annotations_data.get('boxes', []):
                 print("Loading annotation:", box_data)
                 color = self.category_colors.get(box_data['category'], "#FF0000")
-                # Assume stored coordinates match the displayed image.
                 rect = QRect(
                     box_data['x'], box_data['y'],
                     box_data['width'], box_data['height']
@@ -302,6 +347,7 @@ class AnnotationWidget(QWidget):
                 })
             if self.boxes:
                 self.undo_btn.setEnabled(True)
+                self.update_annotation_counter()
         except Exception as e:
             print(f"Error loading annotations: {str(e)}")
             
@@ -312,15 +358,30 @@ class AnnotationWidget(QWidget):
     def mousePressEvent(self, event):
         local_pos = self.image_label.mapFrom(self, event.pos())
         if event.button() == Qt.LeftButton:
-            if self.current_mode == AnnotationMode.CREATE:
+            # In EDIT mode, try to select an existing annotation first.
+            if self.current_mode == AnnotationMode.EDIT:
+                found = False
+                for box in self.boxes:
+                    if box['rubber_band'].geometry().contains(local_pos):
+                        self.selected_box = box
+                        self.highlight_selected_box()
+                        self.delete_btn.setEnabled(True)
+                        self.update_ui_fields_from_annotation(box)
+                        found = True
+                        break
+                if not found:
+                    # If no annotation is hit, start drawing a new annotation.
+                    self.drawing = True
+                    self.start_point = local_pos
+                    self.current_color = self.category_colors.get(self.category_combo.currentText(), "#FF0000")
+            # In CREATE mode, start drawing a new annotation.
+            elif self.current_mode == AnnotationMode.CREATE:
                 self.drawing = True
                 self.start_point = local_pos
                 self.current_color = self.category_colors.get(self.category_combo.currentText(), "#FF0000")
-            elif self.current_mode == AnnotationMode.EDIT:
-                self.select_box_at_point(local_pos)
                 
     def mouseMoveEvent(self, event):
-        if self.drawing and self.current_mode == AnnotationMode.CREATE:
+        if self.drawing:
             local_pos = self.image_label.mapFrom(self, event.pos())
             if self.current_box:
                 self.current_box.hide()
@@ -335,9 +396,9 @@ class AnnotationWidget(QWidget):
             
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
-            if self.current_mode == AnnotationMode.CREATE:
+            if self.drawing:
                 self.finish_create_annotation()
-            elif self.current_mode == AnnotationMode.EDIT:
+            elif self.current_mode == AnnotationMode.EDIT and self.selected_box:
                 self.finish_edit_annotation()
                 
     def mouseDoubleClickEvent(self, event):
@@ -374,24 +435,40 @@ class AnnotationWidget(QWidget):
             self.drawing = False
             self.undo_btn.setEnabled(True)
             self.status_label.setText(f"Added annotation: {len(self.boxes)}")
+            self.update_annotation_counter()
             
     def finish_edit_annotation(self):
         if self.selected_box:
             self.selected_box['box'] = self.selected_box['rubber_band'].geometry()
             self.selected_box = None
             self.status_label.setText("Updated annotation position")
+            self.update_annotation_counter()
             
     # ---------------------------------------------------------------------
-    # Mode toggling and selection
+    # Update selected annotation from UI fields.
+    # ---------------------------------------------------------------------
+    def update_selected_annotation(self):
+        if self.selected_box:
+            # Update the annotation dictionary from the UI fields.
+            self.selected_box['category'] = self.category_combo.currentText()
+            self.selected_box['location'] = self.location_combo.currentText()
+            self.selected_box['body_map_id'] = self.body_map_input.text().strip()
+            # Update the rubber band's overlay text.
+            annotation_info = f"Type: {self.selected_box['category']}, Map: {self.selected_box['body_map_id']}, Loc: {self.selected_box['location']}"
+            self.selected_box['rubber_band'].annotation_info = annotation_info
+            self.selected_box['rubber_band'].update()
+            self.status_label.setText("Updated selected annotation.")
+            self.update_annotation_counter()
+            
+    # ---------------------------------------------------------------------
+    # Mode toggling and selection.
     # ---------------------------------------------------------------------
     def toggle_mode(self):
-        # In this version, if annotations are already present, we force edit mode.
-        # (The toggle button is hidden if annotations exist.)
+        # We allow toggling even when annotations exist.
         if self.current_mode == AnnotationMode.CREATE:
             self.current_mode = AnnotationMode.EDIT
             self.mode_label.setText("Mode: Edit")
             self.mode_label.setStyleSheet("background-color: #2196F3; color: white; padding: 5px; border-radius: 3px;")
-            self.mode_toggle_btn.setVisible(False)
         else:
             self.current_mode = AnnotationMode.CREATE
             self.mode_label.setText("Mode: Create")
@@ -434,6 +511,7 @@ class AnnotationWidget(QWidget):
             if not self.boxes:
                 self.undo_btn.setEnabled(False)
             self.status_label.setText("Undid last annotation")
+            self.update_annotation_counter()
             
     def delete_selected_box(self):
         if self.selected_box:
@@ -451,9 +529,10 @@ class AnnotationWidget(QWidget):
                 if not self.boxes:
                     self.undo_btn.setEnabled(False)
                 self.status_label.setText("Deleted annotation")
+                self.update_annotation_counter()
                 
     # ---------------------------------------------------------------------
-    # Saving and exporting/importing annotations
+    # Saving and exporting/importing annotations.
     # ---------------------------------------------------------------------
     def save_annotations_to_databricks(self):
         if not self.current_wound_id or not self.boxes:
@@ -565,6 +644,7 @@ class AnnotationWidget(QWidget):
             if self.boxes:
                 self.undo_btn.setEnabled(True)
                 self.status_label.setText("Annotations imported successfully")
+                self.update_annotation_counter()
         except Exception as e:
             print(f"Error importing annotations: {str(e)}")
             QMessageBox.critical(self, "Error", f"Failed to import annotations: {str(e)}")
@@ -584,6 +664,7 @@ class AnnotationWidget(QWidget):
         self.selected_box = None
         self.delete_btn.setEnabled(False)
         self.status_label.setText("Cleared all annotations")
+        self.update_annotation_counter()
         
     def resizeEvent(self, event):
         super().resizeEvent(event)

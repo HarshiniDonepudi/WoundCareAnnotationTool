@@ -1,8 +1,9 @@
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
- QPushButton, QLabel, QMessageBox, QToolBar, QStatusBar)
+                             QPushButton, QLabel, QMessageBox, QToolBar, QStatusBar)
 from PyQt5.QtCore import Qt
 from .annotation_widget import AnnotationWidget
 from .image_list_widget import ImageListWidget
+from .annotation_counter_dialog import AnnotationCounterDialog  # New import
 from databricks import sql
 from config import Config
 from database.databricks_connecter import DatabricksConnector 
@@ -62,11 +63,10 @@ class MainWindow(QMainWindow):
         # Setup toolbar
         self.setup_toolbar()
 
-
     def setup_toolbar(self):
         toolbar = self.addToolBar("Main")
 
-        # ✅ User info
+        # User info
         user_label = QLabel(f"User: {self.user_profile.full_name}")
         toolbar.addWidget(user_label)
 
@@ -75,19 +75,31 @@ class MainWindow(QMainWindow):
 
         toolbar.addSeparator()
 
-        # ✅ Refresh button
+        # Refresh button
         refresh_btn = QPushButton("Refresh")
-        refresh_btn.clicked.connect(self.image_list.load_wound_list)  # ✅ `self.image_list` is now defined
+        refresh_btn.clicked.connect(self.image_list.load_wound_list)
         toolbar.addWidget(refresh_btn)
 
         toolbar.addSeparator()
 
-        # ✅ Logout button
+        # Annotation Counter button [New]
+        counter_btn = QPushButton("Annotation Counter")
+        counter_btn.clicked.connect(self.show_annotation_counter)
+        toolbar.addWidget(counter_btn)
+
+        toolbar.addSeparator()
+
+        # Logout button
         logout_btn = QPushButton("Logout")
         logout_btn.clicked.connect(self.logout)
         toolbar.addWidget(logout_btn)
 
-        
+    def show_annotation_counter(self):
+   
+        # Keep a reference so the dialog remains open.
+        self.counter_dialog = AnnotationCounterDialog(self.db_connector, self)
+        self.counter_dialog.show()
+
     def logout(self):
         reply = QMessageBox.question(
             self,
